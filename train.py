@@ -76,13 +76,17 @@ def main():
     img_encoder = ImageEncoder(embed_dim=embed_dim).to(device)
     txt_encoder = TextEncoder(vocab_size, embed_dim=embed_dim, encoder_type=text_encoder).to(device)
 
-    # 优化器
-    optimizer = torch.optim.Adam(
-        list(img_encoder.parameters()) + list(txt_encoder.parameters()),
-        lr=1e-4
-    )
+    params = list(img_encoder.parameters()) + list(txt_encoder.parameters())
+    optimizer = torch.optim.Adam(params, lr=1e-4, weight_decay=1e-5)
+
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=2, verbose=True, min_lr=1e-6)
 
     best_val_loss = float('inf')
+    patience = 6
+    early_stop_counter = 0
+    min_delta = 0.001
+
     epochs = 40
     for epoch in range(epochs):
         img_encoder.train()
@@ -120,10 +124,13 @@ def main():
 
         print(f"Epoch [{epoch+1}/{epochs}]: Train Loss: {avg_train_loss:.4f} | Val Loss: {val_loss:.4f} | Test Loss: {test_loss:.4f}")
 
+        # Update learning rate scheduler
+        scheduler.step(val_loss)
+
         # 如果验证集有改善，则保存最佳模型，这里需要同学们自己选择评估标准
-        if val_loss < best_val_loss:
+        if val_loss < best_val_loss - min_delta:
             best_val_loss = val_loss
-            # 保存模型
+            early_stop_counter = 0
             tokenizer: BertTokenizer
             checkpoint = {
                 'epoch': epoch + 1,
@@ -134,6 +141,11 @@ def main():
             }
             torch.save(checkpoint, "best_clip_model.pth")
             print(f"    > Best model updated at epoch {epoch+1} ")
+        else:
+            early_stop_counter += 1
+            if early_stop_counter >= patience:
+                print("Early stopping triggered.")
+                break
 
 
     # 训练完成，最终在测试集上评估
