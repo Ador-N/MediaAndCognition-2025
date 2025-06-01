@@ -1,2 +1,8 @@
+matplotlib==3.7.5
+nlpaug==1.1.11
+numpy==1.24.4
+Pillow==11.2.1
+torch==2.4.1+cu121
+torchvision==0.19.1+cu121
 tqdm==4.65.2
-numpy>=1.19.0
+transformers==4.46.3

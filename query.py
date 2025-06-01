@@ -1,8 +1,5 @@
 # query.py
 
-import os
-from tabnanny import check
-from matplotlib import image
 import torch
 from torch.utils.data import DataLoader
 from models.image_encoder import ImageEncoder
@@ -81,8 +78,12 @@ def query():
             break
 
         # 对输入文本进行编码
-        tokens = tokenizer.encode(query_text)
-        tokens = torch.LongTensor(tokens).unsqueeze(0).to(device)
+        if text_encoder != "bert":
+            tokens = tokenizer.encode(query_text)
+            tokens = torch.LongTensor(tokens).unsqueeze(0).to(device)
+        else:
+            tokens = tokenizer(query_text, return_tensors='pt', padding=True, truncation=True)
+            tokens = {k: v.to(device) for k, v in tokens.items()}
 
         with torch.no_grad():
             text_embed = txt_encoder(tokens)
@@ -91,6 +92,20 @@ def query():
         # 计算相似度并获取Top-5结果
         sim_scores = torch.matmul(text_embed.cpu(), all_image_embeds.T)
         top_k_scores, top_k_indices = torch.topk(sim_scores[0], k=5)
+        # 计算相似度并获取Top-5结果
+        sim_scores = torch.matmul(text_embed.cpu(), all_image_embeds.T)
+        top_k_scores, top_k_indices = torch.topk(sim_scores[0], k=10)  # Get more results to filter duplicates
+        
+        # Remove duplicate images based on filename
+        seen_images = set()
+        unique_results = []
+        for score, img_idx in zip(top_k_scores, top_k_indices):
+            img_path = all_image_paths[img_idx]
+            if img_path not in seen_images:
+                seen_images.add(img_path)
+                unique_results.append((score, img_idx, img_path))
+                if len(unique_results) >= 5:  # Stop when we have 5 unique results
+                    break
 
         print(f"\n查询 Caption:\n\"{query_text}\"")
         print("\nTop-5 相似图像结果:")
@@ -100,8 +115,7 @@ def query():
         from PIL import Image
 
         plt.figure(figsize=(20, 4))
-        for idx, (score, img_idx) in enumerate(zip(top_k_scores, top_k_indices)):
-            img_path = all_image_paths[img_idx]
+        for idx, (score, img_idx, img_path) in enumerate(unique_results):
             img = Image.open("Flickr8k/images/" + img_path)
             plt.subplot(1, 5, idx + 1)
             plt.imshow(img)

@@ -12,11 +12,7 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
-from global_config import text_encoder, image_encoder, eval_target\
-
-import os
-
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+from global_config import text_encoder, image_encoder, eval_target
 
 
 # 供同学们参考

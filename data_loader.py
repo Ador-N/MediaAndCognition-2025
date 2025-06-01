@@ -5,22 +5,32 @@ from torch.utils.data import Dataset
 from PIL import Image
 import torchvision.transforms as T
 import nlpaug.augmenter.word as naw
-
 from models.bert_encoder import BertTokenizer
+from global_config import enable_data_strengthen, image_encoder
 
 
 class Flickr8kDataset(Dataset):
     def __init__(self, root_dir, captions_file, tokenizer, transform=None, max_len=32):
         self.root_dir = root_dir
-        self.transform = transform or T.Compose([
-            T.Resize((224, 224)),
-            # T.RandomResizedCrop(224),
-            # T.RandomHorizontalFlip(),
-            # T.ColorJitter(0.4, 0.4, 0.4, 0.1),
-            # T.RandomGrayscale(p=0.2),
-            T.ToTensor(),
-            T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-        ])
+
+        transforms = []
+        if enable_data_strengthen:
+            transforms = [
+                T.RandomResizedCrop(224),
+                T.RandomHorizontalFlip(),
+                T.ColorJitter(0.4, 0.4, 0.4, 0.1),
+                T.RandomGrayscale(p=0.2),
+                T.ToTensor(),
+            ]
+        else:
+            transforms += [
+                T.Resize((224, 224)),
+                T.ToTensor(),
+            ]
+        if image_encoder == "vit":
+            transforms.append(T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]))
+        self.transform = transform or T.Compose(transforms)
+            
         self.tokenizer = tokenizer
         self.max_len = max_len
         self.pairs = self._load_pairs(captions_file)
@@ -64,5 +74,8 @@ class Flickr8kDataset(Dataset):
                 'attention_mask': encoding['attention_mask'].squeeze(0)
             }
         else:
+            # Ensure caption is a string (augment might return a list)
+            if isinstance(caption, list):
+                caption = caption[0]
             caption_ids = self.tokenizer.encode(caption)
             return image, torch.tensor(caption_ids)
