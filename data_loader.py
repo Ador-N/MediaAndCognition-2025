@@ -4,18 +4,27 @@ import torch
 from torch.utils.data import Dataset
 from PIL import Image
 import torchvision.transforms as T
+import nlpaug.augmenter.word as naw
+
+from models.bert_encoder import BertTokenizer
+
 
 class Flickr8kDataset(Dataset):
-    def __init__(self, root_dir, captions_file, tokenizer, transform=None, max_len=32, use_bert_tokenizer=False):
+    def __init__(self, root_dir, captions_file, tokenizer, transform=None, max_len=32):
         self.root_dir = root_dir
         self.transform = transform or T.Compose([
             T.Resize((224, 224)),
-            T.ToTensor()
+            # T.RandomResizedCrop(224),
+            # T.RandomHorizontalFlip(),
+            # T.ColorJitter(0.4, 0.4, 0.4, 0.1),
+            # T.RandomGrayscale(p=0.2),
+            T.ToTensor(),
+            T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
         ])
         self.tokenizer = tokenizer
         self.max_len = max_len
         self.pairs = self._load_pairs(captions_file)
-        self.use_bert_tokenizer = use_bert_tokenizer
+        self.use_bert_tokenizer = isinstance(tokenizer, BertTokenizer)
 
     def _load_pairs(self, captions_file):
         pairs = []
@@ -37,7 +46,12 @@ class Flickr8kDataset(Dataset):
         image_path = os.path.join(self.root_dir, filename)
         image = Image.open(image_path).convert("RGB")
         image = self.transform(image)
+
+        text_aug = naw.SynonymAug(aug_src='wordnet')
+        caption = text_aug.augment(caption)
+
         if self.use_bert_tokenizer:
+            self.tokenizer: BertTokenizer
             encoding = self.tokenizer(
                 caption,
                 max_length=self.max_len,

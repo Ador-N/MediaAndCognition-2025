@@ -2,9 +2,9 @@
 
 import os
 from tabnanny import check
+from matplotlib import image
 import torch
 from torch.utils.data import DataLoader
-from models import text_encoder
 from models.image_encoder import ImageEncoder
 from models.text_encoder import TextEncoder
 from data_loader import Flickr8kDataset
@@ -12,12 +12,13 @@ from utils import SimpleTokenizer
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
+from global_config import text_encoder, image_encoder, eval_target
 
 def query():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # 加载模型和tokenizer
-    model_file = "trained_models/best_clip_model.pth"
+    model_file = f"trained_models/best_clip_model_{eval_target}.pth"
     token_file = "Flickr8k/captions.txt"
 
     # 读取所有caption构建词表
@@ -26,13 +27,20 @@ def query():
     captions = [line.strip().split(',')[1] for line in lines if line.strip()]
 
     # 构建tokenizer
-    tokenizer = SimpleTokenizer(captions, min_freq=1)
-    vocab_size = len(tokenizer)
+    if text_encoder != "bert":
+        tokenizer = SimpleTokenizer(captions, min_freq=1)
+        vocab_size = len(tokenizer)
+        print(f"Vocabulary size: {vocab_size}")
+    else:
+        from transformers import BertTokenizer
+        tokenizer = BertTokenizer.from_pretrained("D:/Projects/MediaAndRecognition/models/bert") #from_pretrained('bert-base-uncased')
+        vocab_size = None
+        print(f"Using BERT tokenizer with vocab size: {tokenizer.vocab_size}")
 
     # 加载模型
     checkpoint = torch.load(model_file)
-    img_encoder = ImageEncoder().to(device)
-    txt_encoder = TextEncoder(vocab_size, encoder_type="transformer").to(device)
+    img_encoder = ImageEncoder(encoder_type=image_encoder).to(device)
+    txt_encoder = TextEncoder(vocab_size, encoder_type=text_encoder).to(device)
     img_encoder.load_state_dict(checkpoint['img_encoder_state_dict'])
     txt_encoder.load_state_dict(checkpoint['txt_encoder_state_dict'])
 

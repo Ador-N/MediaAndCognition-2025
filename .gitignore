@@ -1,2 +1,10 @@
-Flickr8k/
 */__pycache__/
+*.pyc
+
+Flickr8k/
+
+models/*
+!models/*.py
+
+logs/
+*.pth

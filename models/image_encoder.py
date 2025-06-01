@@ -14,15 +14,38 @@
 #         return embeddings
 # image_encoder.py
 import torch.nn as nn
-from .resnet_custom import ResNet18  # 替换 torch 的 resnet18
+
 
 class ImageEncoder(nn.Module):
-    def __init__(self, embed_dim=256):
+    def __init__(self, encoder_type='vit', embed_dim=256):
         super().__init__()
-        self.resnet = ResNet18()  # 自己写的网络
-        self.fc = nn.Linear(256, embed_dim)  # 将 ResNet 输出映射到共享空间
+        self.encoder_type = encoder_type
+
+        if encoder_type == 'vit':
+            from transformers import ViTModel
+            self.backbone = ViTModel.from_pretrained('D:/Projects/MediaAndRecognition/models/ViT')
+            # freeze ViT, fine-tune output layer only
+            for name, param in self.backbone.named_parameters():
+                param.requires_grad = \
+                    name.startswith("encoder.layer.11") \
+                    or name.startswith("layernorm")
+            self.out_dim = self.backbone.config.hidden_size
+
+        elif encoder_type == 'resnet18':
+            from .resnet_custom import ResNet18
+            self.resnet = ResNet18()
+            self.out_dim = 256
+
+        else:
+            raise ValueError(f"Unsupported encoder_type: {encoder_type}")
+
+        self.fc = nn.Linear(self.out_dim, embed_dim)
 
     def forward(self, images):
-        features = self.resnet(images)  # [batch, 512]
-        embeddings = self.fc(features)  # [batch, embed_dim]
-        return embeddings
+        if self.encoder_type == 'vit':
+            outputs = self.backbone(pixel_values=images)
+            pooled_output = outputs.pooler_output
+            return self.fc(pooled_output)
+        else:
+            features = self.resnet(images)
+            return self.fc(features)

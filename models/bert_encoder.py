@@ -6,7 +6,8 @@ from transformers import BertTokenizer, BertModel
 class BERTTextEncoder(nn.Module):
     def __init__(self, embed_dim=256):
         super().__init__()
-        self.bert = BertModel.from_pretrained('bert-base-uncased')
+        self.bert = BertModel.from_pretrained(
+            "D:/Projects/MediaAndRecognition/models/bert")  # from_pretrained('bert-base-uncased')
         self.project = nn.Linear(self.bert.config.hidden_size, embed_dim)
 
     def forward(self, captions):

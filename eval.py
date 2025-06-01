@@ -1,11 +1,8 @@
 # eval.py
 
-import os
-from tabnanny import check
 import torch
 from torch.utils.data import DataLoader
 from loss import contrastive_loss
-from models import text_encoder
 from models.bert_encoder import BERTTextEncoder
 from models.image_encoder import ImageEncoder
 from models.text_encoder import TextEncoder
@@ -15,6 +12,11 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
+from global_config import text_encoder, image_encoder, eval_target\
+
+import os
+
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 
 # 供同学们参考
@@ -26,12 +28,17 @@ def evaluate_top_k(img_encoder, txt_encoder, dataloader, device, topk=(1, 5, 10)
     all_text_embeds = []
 
     with torch.no_grad():
-        for images, captions_ids in tqdm(dataloader, desc="Extracting embeddings"):
+        for images, data in tqdm(dataloader, desc="Extracting embeddings"):
             images = images.to(device)
-            captions_ids = captions_ids.to(device)
+            image_embed = img_encoder(images)
 
-            image_embed = img_encoder(images)  # [1, dim]
-            text_embed = txt_encoder(captions_ids)  # [1, dim]
+            if text_encoder == "bert":
+                for k in data:
+                    data[k] = data[k].to(device)
+                text_embed = txt_encoder(data)
+            else:
+                captions_ids = data.to(device)
+                text_embed = txt_encoder(captions_ids)
 
             all_image_embeds.append(image_embed.cpu())
             all_text_embeds.append(text_embed.cpu())
@@ -96,7 +103,7 @@ def evaluate_loss(img_encoder: ImageEncoder, txt_encoder: TextEncoder, dataloade
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model_file = "trained_models/best_clip_model.pth"
+    model_file = f"trained_models/best_clip_model_{eval_target}.pth"
     token_file = "Flickr8k/captions.txt"              # 总的 captions 文件，用于构建词表
     test_token_file = "Flickr8k/test_captions.txt"    # 测试集
 
@@ -106,9 +113,15 @@ def main():
     captions = [line.strip().split(',')[1] for line in lines if line.strip()]
 
     # 构建统一的 tokenizer
-    tokenizer = SimpleTokenizer(captions, min_freq=1)
-    vocab_size = len(tokenizer)
-    print(f"Vocabulary size: {vocab_size}")
+    if text_encoder != "bert":
+        tokenizer = SimpleTokenizer(captions, min_freq=1)
+        vocab_size = len(tokenizer)
+        print(f"Vocabulary size: {vocab_size}")
+    else:
+        from transformers import BertTokenizer
+        tokenizer = BertTokenizer.from_pretrained("D:/Projects/MediaAndRecognition/models/bert") #from_pretrained('bert-base-uncased')
+        vocab_size = None
+        print(f"Using BERT tokenizer with vocab size: {tokenizer.vocab_size}")
 
     # 构建测试集
     test_dataset = Flickr8kDataset(
@@ -122,17 +135,8 @@ def main():
     # load from best_clip_model.pth
     checkpoint = torch.load(model_file)
     # run model
-    '''
-    checkpoint = {
-        'epoch': epoch + 1,
-        'img_encoder_state_dict': img_encoder.state_dict(),
-        'txt_encoder_state_dict': txt_encoder.state_dict(),
-        'tokenizer_vocab': tokenizer.word2idx,
-        'best_val_loss': best_val_loss
-    }
-    '''
-    img_encoder = ImageEncoder().to(device)
-    txt_encoder = TextEncoder(vocab_size, encoder_type="transformer").to(device)
+    img_encoder = ImageEncoder(encoder_type=image_encoder).to(device)
+    txt_encoder = TextEncoder(vocab_size, encoder_type=text_encoder).to(device)
     img_encoder.load_state_dict(checkpoint['img_encoder_state_dict'])
     txt_encoder.load_state_dict(checkpoint['txt_encoder_state_dict'])
 

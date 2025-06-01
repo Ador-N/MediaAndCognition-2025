@@ -7,16 +7,15 @@ from torch.utils.data import DataLoader
 from eval import evaluate_loss
 from models.image_encoder import ImageEncoder
 from models.text_encoder import TextEncoder
-from loss import contrastive_loss
+from loss import ContrastiveLoss
 from data_loader import Flickr8kDataset
 from utils import SimpleTokenizer
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from transformers import BertTokenizer
+from global_config import text_encoder
 
-
-text_encoder = "bert"
 
 def main():
     # 设备设置
@@ -39,7 +38,7 @@ def main():
         vocab_size = len(tokenizer)
         print(f"Vocabulary size: {vocab_size}")
     else:
-        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        tokenizer = BertTokenizer.from_pretrained("D:/Projects/MediaAndRecognition/models/bert") #from_pretrained('bert-base-uncased')
         vocab_size = None
         print(f"Using BERT tokenizer with vocab size: {tokenizer.vocab_size}")
 
@@ -47,20 +46,17 @@ def main():
     train_dataset = Flickr8kDataset(
         root_dir="Flickr8k/images",      # 图片所在目录
         captions_file=train_token_file,   # 训练集 captions 文件，格式： image<TAB>caption
-        tokenizer=tokenizer,
-        use_bert_tokenizer=text_encoder == "bert"
+        tokenizer=tokenizer
     )
     val_dataset = Flickr8kDataset(
         root_dir="Flickr8k/images",
         captions_file=val_token_file,     # 验证集 captions 文件
-        tokenizer=tokenizer,
-        use_bert_tokenizer=text_encoder == "bert"
+        tokenizer=tokenizer
     )
     test_dataset = Flickr8kDataset(
         root_dir="Flickr8k/images",
         captions_file=test_token_file,    # 测试集 captions 文件
-        tokenizer=tokenizer,
-        use_bert_tokenizer=text_encoder == "bert"
+        tokenizer=tokenizer
     )
 
     train_dataloader = DataLoader(
@@ -81,6 +77,8 @@ def main():
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=0.5, patience=2, verbose=True, min_lr=1e-6)
+    
+    loss_fn = ContrastiveLoss(learnable_temp=True, margin=0.1).to(device)
 
     best_val_loss = float('inf')
     patience = 6
@@ -104,12 +102,21 @@ def main():
                 text_embeds = txt_encoder(data)
             else:
                 captions_ids = data.to(device)
-                text_embeds = txt_encoder(captions_ids)   # [batch, embed_dim]
+                # [batch, embed_dim]
+                text_embeds = txt_encoder(captions_ids)
 
-            loss = contrastive_loss(image_embeds, text_embeds)
+            loss = loss_fn(image_embeds, text_embeds)
 
             optimizer.zero_grad()
             loss.backward()
+
+            # gradient clip
+            torch.nn.utils.clip_grad_norm_(
+                [p for p in list(img_encoder.parameters()) +
+                 list(txt_encoder.parameters()) if p.requires_grad],
+                max_norm=1.0
+            )
+
             optimizer.step()
 
             epoch_loss += loss.item()
