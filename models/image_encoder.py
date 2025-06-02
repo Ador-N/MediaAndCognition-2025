@@ -23,7 +23,8 @@ class ImageEncoder(nn.Module):
 
         if encoder_type == 'vit':
             from transformers import ViTModel
-            self.backbone = ViTModel.from_pretrained('D:/Projects/MediaAndRecognition/models/ViT')
+            self.backbone = ViTModel.from_pretrained(
+                'D:/Projects/MediaAndRecognition/models/ViT')  # google/vit-base-patch16-224
             # freeze ViT, fine-tune output layer only
             for name, param in self.backbone.named_parameters():
                 param.requires_grad = \
